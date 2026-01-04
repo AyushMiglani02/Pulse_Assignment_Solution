@@ -15,7 +15,10 @@ class VideoProcessingQueue extends EventEmitter {
     this.processing = new Set();
     this.maxConcurrent = parseInt(process.env.MAX_CONCURRENT_PROCESSING || '2', 10);
     this.isRunning = false;
-    this.uploadsDir = path.join(__dirname, '../../uploads');
+    // Use /tmp for production (Render), local uploads for development
+    this.uploadsDir = process.env.NODE_ENV === 'production'
+      ? '/tmp/uploads'
+      : path.join(__dirname, '../../uploads');
     this.io = null; // Socket.io instance
   }
 
