@@ -48,6 +48,20 @@ export default function VideoDetail() {
     const streamUrl = getStreamUrl();
     console.error('Attempted video URL:', streamUrl);
     
+    // Try to fetch the video URL to see the actual error
+    fetch(streamUrl, { method: 'HEAD' })
+      .then(response => {
+        console.error('Video response status:', response.status, response.statusText);
+        if (response.status === 404) {
+          setPlaybackError('Video file not found on server. This may be due to server restart (Render free tier has ephemeral storage). Please upload the video again.');
+        } else if (!response.ok) {
+          setPlaybackError(`Server error: ${response.status} ${response.statusText}`);
+        }
+      })
+      .catch(err => {
+        console.error('Failed to check video URL:', err);
+      });
+    
     const videoElement = videoRef.current;
     
     if (videoElement && videoElement.error) {
