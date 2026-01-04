@@ -20,6 +20,15 @@ export default function VideoDetail() {
     fetchVideoDetails();
   }, [id]);
 
+  useEffect(() => {
+    // Log video stream URL for debugging
+    if (video && video.status === 'ready') {
+      const streamUrl = getStreamUrl();
+      console.log('Video stream URL:', streamUrl);
+      console.log('VITE_API_URL:', import.meta.env.VITE_API_URL);
+    }
+  }, [video, token]);
+
   const fetchVideoDetails = async () => {
     try {
       setLoading(true);
@@ -36,6 +45,9 @@ export default function VideoDetail() {
 
   const handleVideoError = e => {
     console.error('Video playback error:', e);
+    const streamUrl = getStreamUrl();
+    console.error('Attempted video URL:', streamUrl);
+    
     const videoElement = videoRef.current;
     
     if (videoElement && videoElement.error) {
@@ -64,8 +76,10 @@ export default function VideoDetail() {
   };
 
   const getStreamUrl = () => {
-    const baseUrl = `${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/videos/${id}/stream`;
-    return token ? `${baseUrl}?token=${token}` : baseUrl;
+    // Use VITE_API_URL if available, otherwise fallback to localhost
+    const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+    const streamUrl = `${apiBaseUrl}/api/videos/${id}/stream`;
+    return token ? `${streamUrl}?token=${token}` : streamUrl;
   };
 
   const getSensitivityBadge = sensitivity => {
