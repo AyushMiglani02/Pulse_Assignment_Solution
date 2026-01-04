@@ -7,26 +7,12 @@ const jwt = require('jsonwebtoken');
  * @returns {Object} - Socket.io server instance
  */
 function initializeSocket(httpServer) {
-  // Support multiple origins for CORS
-  const allowedOrigins = [
-    'http://localhost:5173',
-    'http://localhost:5174',
-    process.env.FRONTEND_URL,
-  ].filter(Boolean);
-
+  // Allow all origins for Socket.IO
   const io = new Server(httpServer, {
     cors: {
-      origin: (origin, callback) => {
-        // Allow requests with no origin (like mobile apps or curl requests)
-        if (!origin) return callback(null, true);
-        
-        if (allowedOrigins.includes(origin)) {
-          callback(null, true);
-        } else {
-          callback(new Error('Not allowed by CORS'));
-        }
-      },
-      credentials: true,
+      origin: '*',
+      methods: ['GET', 'POST'],
+      credentials: false,
     },
   });
 
