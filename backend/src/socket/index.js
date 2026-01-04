@@ -16,13 +16,15 @@ function initializeSocket(httpServer) {
     },
   });
 
-  // Authentication middleware
+  // Authentication middleware - make token optional
   io.use(async (socket, next) => {
     try {
       const token = socket.handshake.auth.token;
 
       if (!token) {
-        return next(new Error('Authentication token required'));
+        // Allow connection without token (for public features)
+        console.log('Socket connected without authentication');
+        return next();
       }
 
       // Verify JWT token
@@ -37,7 +39,8 @@ function initializeSocket(httpServer) {
       next();
     } catch (error) {
       console.error('Socket authentication failed:', error.message);
-      next(new Error('Invalid authentication token'));
+      // Still allow connection even if token is invalid
+      next();
     }
   });
 
