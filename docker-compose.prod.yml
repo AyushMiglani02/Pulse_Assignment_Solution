@@ -1,0 +1,59 @@
+# ============================================================
+# Docker Compose - Production Override
+# ============================================================
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+version: '3.8'
+
+services:
+  backend:
+    build:
+      target: production  # Use production stage
+    environment:
+      NODE_ENV: production
+    command: node src/server.js  # No hot reload in production
+    volumes:
+      # Only mount uploads, not source code
+      - backend_uploads:/app/uploads
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  frontend:
+    build:
+      target: production  # Use Nginx production stage
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # SSL certificates (if using HTTPS)
+      # - ./ssl:/etc/nginx/ssl:ro
+      []  # No source code mounts in production
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  mongodb:
+    volumes:
+      # Production backup location
+      - /opt/pulse/mongodb_data:/data/db
+      - /opt/pulse/mongodb_config:/data/configdb
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G

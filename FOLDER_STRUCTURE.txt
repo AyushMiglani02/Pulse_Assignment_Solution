@@ -1,0 +1,65 @@
+Pulse_assignment_solution/
+│
+├── 📁 .git/                        # Git repository
+├── 📁 .husky/                      # Git hooks (pre-commit)
+│   └── pre-commit
+│
+├── 📁 backend/                     # Node.js + Express API
+│   ├── 📁 src/
+│   │   ├── 📁 config/
+│   │   │   └── database.js         # MongoDB connection
+│   │   ├── 📁 controllers/
+│   │   │   └── health.controller.js
+│   │   ├── 📁 middleware/
+│   │   │   └── errorHandler.js
+│   │   ├── 📁 routes/
+│   │   │   ├── index.js
+│   │   │   └── health.routes.js
+│   │   ├── app.js                  # Express app setup
+│   │   └── server.js               # Entry point
+│   ├── 📁 tests/
+│   │   ├── setup.js
+│   │   ├── health.test.js          # ✅ 8 tests
+│   │   └── errorHandler.test.js    # ✅ 3 tests
+│   ├── package.json
+│   ├── .env.example
+│   └── .eslintrc.js
+│
+├── 📁 frontend/                    # React + Vite
+│   ├── 📁 src/
+│   │   ├── 📁 components/
+│   │   │   └── Layout.jsx
+│   │   ├── 📁 pages/
+│   │   │   ├── Home.jsx
+│   │   │   └── NotFound.jsx
+│   │   ├── 📁 tests/
+│   │   │   ├── setup.js
+│   │   │   ├── App.test.jsx        # ✅ 4 tests
+│   │   │   ├── Layout.test.jsx     # ✅ 5 tests
+│   │   │   └── NotFound.test.jsx   # ✅ 4 tests
+│   │   ├── App.jsx
+│   │   ├── main.jsx
+│   │   └── index.css
+│   ├── index.html
+│   ├── package.json
+│   ├── .env.example
+│   ├── eslint.config.js
+│   ├── vite.config.js
+│   ├── tailwind.config.js
+│   └── postcss.config.js
+│
+├── 📁 scripts/
+│   └── update-docs.js              # Auto-update docs
+│
+├── 📄 package.json                 # Root workspace
+├── 📄 README.md                    # Project overview
+├── 📄 PROJECT_DOCUMENTATION.md     # Technical docs
+├── 📄 PHASE1_SUMMARY.md            # Phase 1 completion
+├── 📄 .gitignore
+├── 📄 .prettierrc
+└── 📄 .prettierignore
+
+✅ Total Files Created: 42
+✅ Total Tests: 24 (all passing)
+✅ Backend Tests: 11
+✅ Frontend Tests: 13
