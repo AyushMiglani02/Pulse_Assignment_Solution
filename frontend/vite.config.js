@@ -16,6 +16,8 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: true,
+    // Copy public folder to dist (includes _redirects)
+    copyPublicDir: true,
   },
   test: {
     globals: true,
