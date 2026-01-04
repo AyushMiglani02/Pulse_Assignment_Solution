@@ -34,16 +34,22 @@ exports.uploadVideo = async (req, res, next) => {
     const storedFilename = sanitized + '-' + uniqueSuffix + ext;
 
     // Upload video to GridFS
-    const uploadResult = await gridfsStorage.uploadToGridFS(
-      req.file.buffer,
-      storedFilename,
-      {
-        originalFilename: req.file.originalname,
-        mimeType: req.file.mimetype,
-        uploadedBy: req.user._id.toString(),
-        tenantId: req.user.tenantId || 'default',
-      }
-    );
+    let uploadResult;
+    try {
+      uploadResult = await gridfsStorage.uploadToGridFS(
+        req.file.buffer,
+        storedFilename,
+        {
+          originalFilename: req.file.originalname,
+          mimeType: req.file.mimetype,
+          uploadedBy: req.user._id.toString(),
+          tenantId: req.user.tenantId || 'default',
+        }
+      );
+    } catch (uploadError) {
+      console.error('GridFS upload failed:', uploadError);
+      return next(new AppError(`Failed to upload video to storage: ${uploadError.message}`, 500));
+    }
 
     // Create video record
     const video = await Video.create({
@@ -565,7 +571,11 @@ exports.streamVideo = async (req, res, next) => {
 
     // Check if GridFS file exists
     if (!video.gridFsFileId) {
-      return next(new AppError('Video file not found in storage', 404));
+      return next(new AppError(
+        'This video was uploaded before the storage system migration and is no longer available. ' +
+        'Please delete this video and upload it again.',
+        410
+      ));
     }
 
     // Get file metadata from GridFS

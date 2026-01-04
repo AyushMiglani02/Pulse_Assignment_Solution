@@ -13,6 +13,11 @@ let gridFSBucket;
  */
 const initializeGridFS = () => {
   if (!gridFSBucket) {
+    // Check if MongoDB connection is ready
+    if (!mongoose.connection.db) {
+      throw new Error('MongoDB connection not established. Cannot initialize GridFS.');
+    }
+    
     gridFSBucket = new mongoose.mongo.GridFSBucket(mongoose.connection.db, {
       bucketName: 'videos', // Collection prefix: videos.files and videos.chunks
     });
