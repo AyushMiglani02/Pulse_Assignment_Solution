@@ -3,10 +3,19 @@ const path = require('path');
 const fs = require('fs');
 const { AppError } = require('./errorHandler');
 
+// Use /tmp directory for Render (persistent across request, cleared on restart)
+const uploadDir = process.env.NODE_ENV === 'production' 
+  ? path.join('/tmp', 'uploads', 'videos')
+  : path.join(__dirname, '../../uploads/videos');
+
 // Ensure uploads directory exists
-const uploadDir = path.join(__dirname, '../../uploads/videos');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
+try {
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+    console.log(`Created upload directory: ${uploadDir}`);
+  }
+} catch (error) {
+  console.error('Failed to create upload directory:', error);
 }
 
 // Configure storage

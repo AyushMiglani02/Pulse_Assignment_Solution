@@ -300,8 +300,11 @@ exports.deleteVideo = async (req, res, next) => {
     }
     // Admins can delete any video
 
-    // Delete video file
-    const videoPath = path.join(__dirname, '../../uploads/videos', video.storedFilename);
+    // Delete video file - use /tmp for production
+    const uploadDir = process.env.NODE_ENV === 'production'
+      ? path.join('/tmp', 'uploads', 'videos')
+      : path.join(__dirname, '../../uploads/videos');
+    const videoPath = path.join(uploadDir, video.storedFilename);
     try {
       await fs.unlink(videoPath);
     } catch (err) {
@@ -540,12 +543,11 @@ exports.streamVideo = async (req, res, next) => {
       return next(new AppError(`Video is not ready for streaming (status: ${video.status})`, 400));
     }
 
-    // Get video file path
-    const videoPath = path.join(
-      __dirname,
-      '../../uploads/videos',
-      video.storedFilename,
-    );
+    // Get video file path - use /tmp for production (Render)
+    const uploadDir = process.env.NODE_ENV === 'production'
+      ? path.join('/tmp', 'uploads', 'videos')
+      : path.join(__dirname, '../../uploads/videos');
+    const videoPath = path.join(uploadDir, video.storedFilename);
 
     // Check if file exists
     let stat;
