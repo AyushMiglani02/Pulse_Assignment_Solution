@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { initializeGridFS } = require('../services/gridfsStorage');
 
 let isConnected = false;
 
@@ -23,6 +24,9 @@ const connectDatabase = async () => {
     await mongoose.connect(mongoUri, options);
     isConnected = true;
     console.info(`✅ MongoDB connected: ${mongoose.connection.name}`);
+    
+    // Initialize GridFS after successful connection
+    initializeGridFS();
   } catch (error) {
     console.error('❌ MongoDB connection error:', error);
     throw error;

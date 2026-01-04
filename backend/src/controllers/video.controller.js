@@ -3,7 +3,7 @@ const VideoAssignment = require('../models/VideoAssignment');
 const User = require('../models/User');
 const { AppError } = require('../middleware/errorHandler');
 const processingQueue = require('../services/processingQueue');
-const fs = require('fs').promises;
+const gridfsStorage = require('../services/gridfsStorage');
 const path = require('path');
 
 /**
@@ -26,6 +26,25 @@ exports.uploadVideo = async (req, res, next) => {
       return next(new AppError('Title is required', 400));
     }
 
+    // Generate unique filename
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    const ext = path.extname(req.file.originalname);
+    const nameWithoutExt = path.basename(req.file.originalname, ext);
+    const sanitized = nameWithoutExt.replace(/[^a-zA-Z0-9-_]/g, '_');
+    const storedFilename = sanitized + '-' + uniqueSuffix + ext;
+
+    // Upload video to GridFS
+    const uploadResult = await gridfsStorage.uploadToGridFS(
+      req.file.buffer,
+      storedFilename,
+      {
+        originalFilename: req.file.originalname,
+        mimeType: req.file.mimetype,
+        uploadedBy: req.user._id.toString(),
+        tenantId: req.user.tenantId || 'default',
+      }
+    );
+
     // Create video record
     const video = await Video.create({
       title: title.trim(),
@@ -35,7 +54,8 @@ exports.uploadVideo = async (req, res, next) => {
       status: 'uploaded',
       sensitivity: 'unknown',
       originalFilename: req.file.originalname,
-      storedFilename: req.file.filename,
+      storedFilename: uploadResult.filename,
+      gridFsFileId: uploadResult.fileId,
       fileSize: req.file.size,
       mimeType: req.file.mimetype,
     });
@@ -300,23 +320,23 @@ exports.deleteVideo = async (req, res, next) => {
     }
     // Admins can delete any video
 
-    // Delete video file - use /tmp for production
-    const uploadDir = process.env.NODE_ENV === 'production'
-      ? path.join('/tmp', 'uploads', 'videos')
-      : path.join(__dirname, '../../uploads/videos');
-    const videoPath = path.join(uploadDir, video.storedFilename);
-    try {
-      await fs.unlink(videoPath);
-    } catch (err) {
-      console.error('Error deleting video file:', err);
+    // Delete video file from GridFS
+    if (video.gridFsFileId) {
+      try {
+        await gridfsStorage.deleteFromGridFS(video.gridFsFileId);
+        console.log(`Deleted video file from GridFS: ${video.gridFsFileId}`);
+      } catch (err) {
+        console.error('Error deleting video file from GridFS:', err);
+      }
     }
 
-    // Delete thumbnail if exists
-    if (video.thumbnailPath) {
+    // Delete thumbnail from GridFS if exists
+    if (video.thumbnailGridFsFileId) {
       try {
-        await fs.unlink(video.thumbnailPath);
+        await gridfsStorage.deleteFromGridFS(video.thumbnailGridFsFileId);
+        console.log(`Deleted thumbnail from GridFS: ${video.thumbnailGridFsFileId}`);
       } catch (err) {
-        console.error('Error deleting thumbnail:', err);
+        console.error('Error deleting thumbnail from GridFS:', err);
       }
     }
 
@@ -543,22 +563,21 @@ exports.streamVideo = async (req, res, next) => {
       return next(new AppError(`Video is not ready for streaming (status: ${video.status})`, 400));
     }
 
-    // Get video file path - use /tmp for production (Render)
-    const uploadDir = process.env.NODE_ENV === 'production'
-      ? path.join('/tmp', 'uploads', 'videos')
-      : path.join(__dirname, '../../uploads/videos');
-    const videoPath = path.join(uploadDir, video.storedFilename);
-
-    // Check if file exists
-    let stat;
-    try {
-      stat = await fs.stat(videoPath);
-    } catch (err) {
-      console.error('Error reading video file:', err);
-      return next(new AppError('Video file not found', 404));
+    // Check if GridFS file exists
+    if (!video.gridFsFileId) {
+      return next(new AppError('Video file not found in storage', 404));
     }
 
-    const fileSize = stat.size;
+    // Get file metadata from GridFS
+    let fileMetadata;
+    try {
+      fileMetadata = await gridfsStorage.getFileMetadata(video.gridFsFileId);
+    } catch (err) {
+      console.error('Error reading video file from GridFS:', err);
+      return next(new AppError('Video file not found on server. This may be due to server restart (Render free tier has ephemeral storage). Please upload the video again.', 404));
+    }
+
+    const fileSize = fileMetadata.length;
     const range = req.headers.range;
 
     if (range) {
@@ -577,8 +596,8 @@ exports.streamVideo = async (req, res, next) => {
 
       const chunksize = end - start + 1;
 
-      // Create read stream for partial content
-      const readStream = require('fs').createReadStream(videoPath, { start, end });
+      // Create read stream for partial content from GridFS
+      const downloadStream = gridfsStorage.downloadFromGridFS(video.gridFsFileId);
 
       // Set headers for partial content
       res.status(206).set({
@@ -588,8 +607,48 @@ exports.streamVideo = async (req, res, next) => {
         'Content-Type': video.mimeType || 'video/mp4',
       });
 
-      // Pipe the stream to response
-      readStream.pipe(res);
+      // For range requests, we need to skip to the start position
+      let bytesRead = 0;
+      downloadStream.on('data', (chunk) => {
+        if (bytesRead + chunk.length <= start) {
+          // Skip this chunk entirely
+          bytesRead += chunk.length;
+        } else if (bytesRead < start) {
+          // Partially skip this chunk
+          const skipBytes = start - bytesRead;
+          const useBytes = chunk.length - skipBytes;
+          const useEnd = Math.min(useBytes, chunksize - (bytesRead + skipBytes - start));
+          res.write(chunk.slice(skipBytes, skipBytes + useEnd));
+          bytesRead += chunk.length;
+          if (bytesRead >= end + 1) {
+            downloadStream.destroy();
+            res.end();
+          }
+        } else if (bytesRead <= end) {
+          // Use this chunk (or part of it)
+          const remainingBytes = end - bytesRead + 1;
+          const useBytes = Math.min(chunk.length, remainingBytes);
+          res.write(chunk.slice(0, useBytes));
+          bytesRead += chunk.length;
+          if (bytesRead >= end + 1) {
+            downloadStream.destroy();
+            res.end();
+          }
+        }
+      });
+
+      downloadStream.on('error', (err) => {
+        console.error('Stream error:', err);
+        if (!res.headersSent) {
+          return next(new AppError('Error streaming video', 500));
+        }
+      });
+
+      downloadStream.on('end', () => {
+        if (!res.writableEnded) {
+          res.end();
+        }
+      });
     } else {
       // No range requested, stream entire file
       res.status(200).set({
@@ -598,9 +657,17 @@ exports.streamVideo = async (req, res, next) => {
         'Accept-Ranges': 'bytes',
       });
 
-      // Create read stream for entire file
-      const readStream = require('fs').createReadStream(videoPath);
-      readStream.pipe(res);
+      // Create read stream for entire file from GridFS
+      const downloadStream = gridfsStorage.downloadFromGridFS(video.gridFsFileId);
+      
+      downloadStream.on('error', (err) => {
+        console.error('Stream error:', err);
+        if (!res.headersSent) {
+          return next(new AppError('Error streaming video', 500));
+        }
+      });
+
+      downloadStream.pipe(res);
     }
   } catch (error) {
     next(error);

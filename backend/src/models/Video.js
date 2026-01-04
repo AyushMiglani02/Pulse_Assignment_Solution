@@ -43,7 +43,11 @@ const videoSchema = new mongoose.Schema(
     storedFilename: {
       type: String,
       required: [true, 'Stored filename is required'],
-      unique: true,
+    },
+    gridFsFileId: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: [true, 'GridFS file ID is required'],
+      index: true,
     },
     fileSize: {
       type: Number,
@@ -84,6 +88,10 @@ const videoSchema = new mongoose.Schema(
     },
     thumbnailFilename: {
       type: String, // Generated thumbnail filename
+    },
+    thumbnailGridFsFileId: {
+      type: mongoose.Schema.Types.ObjectId,
+      index: true,
     },
     sensitivityFlags: {
       type: [String], // Array of flags from sensitivity analysis

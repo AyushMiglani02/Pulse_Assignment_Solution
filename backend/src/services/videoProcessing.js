@@ -1,6 +1,8 @@
 const ffmpeg = require('fluent-ffmpeg');
 const path = require('path');
 const fs = require('fs').promises;
+const os = require('os');
+const gridfsStorage = require('./gridfsStorage');
 
 // Set FFmpeg and FFprobe paths (use installed binary in production, mock in tests)
 if (process.env.NODE_ENV !== 'test') {
@@ -169,34 +171,54 @@ const analyzeSensitivity = (metadata, title = '', description = '') => {
 /**
  * Process a video file - extract metadata, generate thumbnail, analyze sensitivity
  * @param {Object} video - Video document from database
- * @param {String} uploadsDir - Base uploads directory
  * @returns {Promise<Object>} - Processing result
  */
-const processVideo = async (video, uploadsDir) => {
-  try {
-    const videoPath = path.join(uploadsDir, 'videos', video.storedFilename);
+const processVideo = async (video) => {
+  let tempVideoPath = null;
+  let tempThumbnailPath = null;
 
-    // Check if file exists
-    try {
-      await fs.access(videoPath);
-    } catch {
-      throw new Error('Video file not found');
-    }
+  try {
+    // Create temporary file paths
+    const tempDir = os.tmpdir();
+    const ext = path.extname(video.storedFilename);
+    tempVideoPath = path.join(tempDir, `video-${Date.now()}${ext}`);
+    tempThumbnailPath = path.join(tempDir, `thumb-${Date.now()}.jpg`);
+
+    // Download video from GridFS to temporary file
+    console.log(`Downloading video from GridFS: ${video.gridFsFileId}`);
+    const videoBuffer = await gridfsStorage.downloadToBuffer(video.gridFsFileId);
+    await fs.writeFile(tempVideoPath, videoBuffer);
 
     // Extract metadata
-    const metadata = await extractMetadata(videoPath);
+    const metadata = await extractMetadata(tempVideoPath);
 
     // Generate thumbnail
+    await generateThumbnail(tempVideoPath, tempThumbnailPath, Math.min(1, metadata.duration / 2));
+
+    // Read thumbnail and upload to GridFS
+    const thumbnailBuffer = await fs.readFile(tempThumbnailPath);
     const thumbnailFilename = `thumb-${video.storedFilename.replace(/\.[^.]+$/, '.jpg')}`;
-    const thumbnailPath = path.join(uploadsDir, 'thumbnails', thumbnailFilename);
-
-    // Ensure thumbnails directory exists
-    await fs.mkdir(path.dirname(thumbnailPath), { recursive: true });
-
-    await generateThumbnail(videoPath, thumbnailPath, Math.min(1, metadata.duration / 2));
+    
+    const thumbnailUploadResult = await gridfsStorage.uploadToGridFS(
+      thumbnailBuffer,
+      thumbnailFilename,
+      {
+        videoId: video._id.toString(),
+        mimeType: 'image/jpeg',
+        type: 'thumbnail',
+      }
+    );
 
     // Analyze sensitivity
     const sensitivityAnalysis = analyzeSensitivity(metadata, video.title, video.description);
+
+    // Clean up temporary files
+    try {
+      await fs.unlink(tempVideoPath);
+      await fs.unlink(tempThumbnailPath);
+    } catch (cleanupError) {
+      console.warn('Failed to clean up temporary files:', cleanupError.message);
+    }
 
     return {
       success: true,
@@ -212,11 +234,29 @@ const processVideo = async (video, uploadsDir) => {
         hasAudio: !!metadata.audio,
       },
       thumbnail: thumbnailFilename,
+      thumbnailGridFsFileId: thumbnailUploadResult.fileId,
       sensitivity: sensitivityAnalysis.sensitivity,
       sensitivityFlags: sensitivityAnalysis.flags,
     };
   } catch (error) {
     console.error('Video processing error:', error);
+    
+    // Clean up temporary files on error
+    if (tempVideoPath) {
+      try {
+        await fs.unlink(tempVideoPath);
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
+    if (tempThumbnailPath) {
+      try {
+        await fs.unlink(tempThumbnailPath);
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
+
     return {
       success: false,
       error: error.message,

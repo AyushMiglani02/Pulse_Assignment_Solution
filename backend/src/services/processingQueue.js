@@ -1,7 +1,6 @@
 const EventEmitter = require('events');
 const { processVideo } = require('./videoProcessing');
 const Video = require('../models/Video');
-const path = require('path');
 const { emitProcessingProgress, emitProcessingStatus, emitProcessingError } = require('../socket');
 
 /**
@@ -15,10 +14,6 @@ class VideoProcessingQueue extends EventEmitter {
     this.processing = new Set();
     this.maxConcurrent = parseInt(process.env.MAX_CONCURRENT_PROCESSING || '2', 10);
     this.isRunning = false;
-    // Use /tmp for production (Render), local uploads for development
-    this.uploadsDir = process.env.NODE_ENV === 'production'
-      ? '/tmp/uploads'
-      : path.join(__dirname, '../../uploads');
     this.io = null; // Socket.io instance
   }
 
@@ -143,7 +138,7 @@ class VideoProcessingQueue extends EventEmitter {
       // In real implementation, processVideo would emit progress internally
       emitProcessingProgress(this.io, userId, videoId, 25);
 
-      const result = await processVideo(video, this.uploadsDir);
+      const result = await processVideo(video);
 
       emitProcessingProgress(this.io, userId, videoId, 75);
 
@@ -154,6 +149,7 @@ class VideoProcessingQueue extends EventEmitter {
         video.codec = result.metadata.codec;
         video.format = result.metadata.format;
         video.thumbnailFilename = result.thumbnail;
+        video.thumbnailGridFsFileId = result.thumbnailGridFsFileId;
         video.sensitivity = result.sensitivity;
         video.sensitivityFlags = result.sensitivityFlags;
         video.status = 'ready';
